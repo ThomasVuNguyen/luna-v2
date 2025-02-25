@@ -40,20 +40,25 @@ def get_card_number(pattern):
 def setup_mixer(card, record_type, board):
     """Configure the mixer settings for recording"""
     # Set common mixer settings
+# In the setup_mixer function, try reducing these values:
+
+    # Reduce the ALC Capture PGA (Programmable Gain Amplifier) values
     subprocess.run(["amixer", "-c", card, "cset", "name='ALC Capture Max PGA'", 
-                   "4" if record_type == "main" else "2"], stdout=subprocess.DEVNULL)
-    
+                "2" if record_type == "main" else "1"], stdout=subprocess.DEVNULL)
+
     subprocess.run(["amixer", "-c", card, "cset", "name='ALC Capture Min PGA'", 
-                   "2" if record_type == "main" else "1"], stdout=subprocess.DEVNULL)
-    
+                "1" if record_type == "main" else "0"], stdout=subprocess.DEVNULL)
+
+    # Lower the Capture Digital Volume (from 192 to a lower value like 160)
     subprocess.run(["amixer", "-c", card, "cset", "name='Capture Digital Volume'", "192"], 
-                  stdout=subprocess.DEVNULL)
-    
+                stdout=subprocess.DEVNULL)
+
+    # Reduce the channel capture volumes (from 4 to 3 or 2)
     subprocess.run(["amixer", "-c", card, "cset", "name='Left Channel Capture Volume'", "4"], 
-                  stdout=subprocess.DEVNULL)
-    
+                stdout=subprocess.DEVNULL)
+
     subprocess.run(["amixer", "-c", card, "cset", "name='Right Channel Capture Volume'", "4"], 
-                  stdout=subprocess.DEVNULL)
+                stdout=subprocess.DEVNULL)
     
     # Board-specific settings
     if board == "orangepi900":
