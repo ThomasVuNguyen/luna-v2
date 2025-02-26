@@ -1,0 +1,7 @@
+onnxruntime-linux-aarch64-1.20.1.tgz
+piper_phonemize/
+__pycache__/  
+*.opus
+onnxruntime-linux-aarch64-1.20.1/  
+paroli/                                
+piper-phonemize_linux_aarch64.tar.gz
