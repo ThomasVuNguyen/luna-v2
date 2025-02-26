@@ -40,6 +40,7 @@ def get_card_number(pattern):
 def setup_mixer(card, record_type, board):
     """Configure the mixer settings for recording"""
     # Set common mixer settings
+# In the setup_mixer function, try reducing these values:
 
     # Reduce the ALC Capture PGA (Programmable Gain Amplifier) values
     subprocess.run(["amixer", "-c", card, "cset", "name='ALC Capture Max PGA'", 
@@ -91,9 +92,16 @@ def setup_mixer(card, record_type, board):
             subprocess.run(["amixer", "-c", card, "cset", "name='Differential Mux'", "0"], 
                           stdout=subprocess.DEVNULL)
 
-def record(output_file="/tmp/test.wav"):
-    record_type = 'main'
-    play_option = "noplay"
+def main():
+    # Check command line arguments
+    if len(sys.argv) < 2 or sys.argv[1] not in ["main", "headset"]:
+        print("usage: test_record.py main/headset [output_file] [play|noplay]")
+        print("Recording will continue until interrupted with Ctrl+C")
+        sys.exit(1)
+    
+    record_type = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else "/tmp/test.wav"
+    play_option = sys.argv[3] if len(sys.argv) > 3 else "play"
     
     # Get board information from /etc/orangepi-release
     board = None
@@ -132,3 +140,6 @@ def record(output_file="/tmp/test.wav"):
     except KeyboardInterrupt:
         # Will be caught by signal handler
         pass
+
+if __name__ == "__main__":
+    main()
