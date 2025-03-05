@@ -1,6 +1,6 @@
 import llama_cpp
 
-def initialize_model(model_path="./luna.gguf", threads=4, context_size=4096, system_prompt="### System: You are Luna, a sexy lady trying to help out."):
+def initialize_model(model_path="./luna.gguf", threads=4, context_size=4096, system_prompt="### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation"):
     """
     Initialize the LLaMA model with the given parameters.
     
