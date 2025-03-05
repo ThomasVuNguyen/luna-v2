@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Press enter to talk & enter to stop -> listen response
 import os
 import subprocess
 import signal

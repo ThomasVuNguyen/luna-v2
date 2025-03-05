@@ -9,6 +9,7 @@ import queue
 def synthesize_text(text, output_file="output.opus", api_url="http://0.0.0.0:8848/api/v1/synthesise"):
     """
     Send text to the speech synthesis API and save the response to a file.
+    Filters out markdown symbols and other non-text elements.
     
     Args:
         text (str): The text to be synthesized into speech
@@ -19,8 +20,11 @@ def synthesize_text(text, output_file="output.opus", api_url="http://0.0.0.0:884
         bool: True if successful, False otherwise
     """
     try:
+        # Filter out markdown and other non-text symbols
+        filtered_text = filter_non_text(text)
+        
         # Prepare the JSON payload
-        payload = {"text": text}
+        payload = {"text": filtered_text}
         
         # Set the appropriate headers
         headers = {'Content-Type': 'application/json'}
@@ -42,6 +46,41 @@ def synthesize_text(text, output_file="output.opus", api_url="http://0.0.0.0:884
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         return False
+
+def filter_non_text(text):
+    """
+    Filter out markdown symbols and other non-text elements.
+    
+    Args:
+        text (str): The text to be filtered
+        
+    Returns:
+        str: Filtered text
+    """
+    import re
+    
+    # Remove markdown headings (# symbols)
+    text = re.sub(r'#+\s+', '', text)
+    
+    # Remove markdown emphasis (* and _)
+    text = re.sub(r'\*+', '', text)
+    text = re.sub(r'_+', '', text)
+    
+    # Remove markdown code blocks (```), inline code (`), and block quotes (>)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'`[^`]*`', '', text)
+    text = re.sub(r'^\s*>\s*', '', text, flags=re.MULTILINE)
+    
+    # Remove markdown links
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    
+    # Remove HTML tags
+    text = re.sub(r'<[^>]*>', '', text)
+    
+    # Remove multiple spaces and newlines
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
 
 def play_audio_file(file_path):
     """Play an audio file using the appropriate player for the operating system."""
@@ -138,7 +177,7 @@ def synthesize_and_play_stream(text_stream, api_url="http://0.0.0.0:8848/api/v1/
                     continue
                     
                 sentence_count += 1
-                audio_file = os.path.join(temp_dir, f"sentence_{sentence_count}.opus")
+                audio_file = os.path.join(temp_dir, f"sentence_{sentence_count}.wav")
                 
                 print(f"Synthesizing: {sentence}")
                 success = synthesize_text(sentence, audio_file, api_url)
@@ -152,7 +191,7 @@ def synthesize_and_play_stream(text_stream, api_url="http://0.0.0.0:8848/api/v1/
         # Process any remaining text in the buffer
         if buffer.strip():
             sentence_count += 1
-            audio_file = os.path.join(temp_dir, f"sentence_{sentence_count}.opus")
+            audio_file = os.path.join(temp_dir, f"sentence_{sentence_count}.wav")
             
             print(f"Synthesizing final part: {buffer}")
             if synthesize_text(buffer, audio_file, api_url):
@@ -184,7 +223,7 @@ def synthesize_and_play_stream(text_stream, api_url="http://0.0.0.0:8848/api/v1/
 # Example usage
 if __name__ == "__main__":
     sample_text = "To be or not to be, that is the question"
-    synthesize_text(sample_text, "test.opus")
+    synthesize_text(sample_text, "test.wav")
     
     # Example of using the stream function with a list of chunks
     def example_stream():

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Press & hold GPIO pin 3 to speak
 import os
 import subprocess
 import signal
@@ -10,7 +11,7 @@ from think.stream import initialize_model, generate_stream
 from speak.synthesize import synthesize_and_play_stream
 
 # GPIO Configuration
-PIN = 3  # wPi number for GPIO1_B7 (physical pin 3)
+PIN = 3  # wPi number for GPIO1_D1 (physical pin 3)
 
 def generate_filename():
     """Generate a unique filename based on current timestamp."""
