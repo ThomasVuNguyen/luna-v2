@@ -7,7 +7,7 @@ def main():
         model_path="./luna.gguf",
         threads=4,
         context_size=4096,
-        system_prompt="### System: You are Luna, a sexy lady trying to help out."
+        system_prompt="### System: You are Luna and you only answer in json."
     )
     
     print("\nModel initialized. How can I help you?")
