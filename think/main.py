@@ -4,7 +4,7 @@ def main():
     # Initialize the model
     print("Initializing model...")
     llm = initialize_model(
-        model_path="./luna.gguf",
+        model_path="./qwen2.5-0.5b-instruct-q4_k_m.gguf",
         threads=4,
         context_size=4096,
         system_prompt="### System: You are Luna and you only answer in json."
