@@ -4,10 +4,10 @@ def main():
     # Initialize the model
     print("Initializing model...")
     llm = initialize_model(
-        model_path="./luna.gguf",
-        threads=4,
+        model_path="./luna-function.gguf",
+        threads=8,
         context_size=4096,
-        system_prompt="### System: You are Luna and you only answer in json."
+        system_prompt="### System: You are Luna and you speak flirty."
     )
     
     print("\nModel initialized. How can I help you?")
