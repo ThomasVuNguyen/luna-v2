@@ -2,10 +2,28 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 import json
 import time
 import llama_cpp
+from flask_cors import CORS
 
-model_name = "luna.gguf"
+# Create Flask app
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-def initialize_model(model_path="./luna.gguf", threads=4, context_size=4096, system_prompt="### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation"):
+# Default model configuration
+DEFAULT_CONFIG = {
+    "model_path": "./luna.gguf",
+    "model_name": "luna",
+    "threads": 4,
+    "context_size": 4096,
+    "system_prompt": "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation"
+}
+
+# Global model instance
+model = None
+
+def initialize_model(model_path=DEFAULT_CONFIG["model_path"], 
+                     threads=DEFAULT_CONFIG["threads"], 
+                     context_size=DEFAULT_CONFIG["context_size"], 
+                     system_prompt=DEFAULT_CONFIG["system_prompt"]):
     """
     Initialize the LLaMA model with the given parameters.
     
@@ -31,6 +49,24 @@ def initialize_model(model_path="./luna.gguf", threads=4, context_size=4096, sys
     llm.eval(init_tokens)
     
     return llm
+
+def init_model(config=None):
+    """Initialize the model if not already initialized"""
+    global model, DEFAULT_CONFIG
+    
+    if config is None:
+        config = DEFAULT_CONFIG
+        
+    if model is None:
+        print(f"Initializing model: {config['model_name']} from {config['model_path']}...")
+        model = initialize_model(
+            model_path=config['model_path'],
+            threads=config['threads'],
+            context_size=config['context_size'],
+            system_prompt=config['system_prompt']
+        )
+        print("Model initialized successfully")
+    return model
 
 def generate_stream(llm, prompt, prefix="### User: ", suffix="### Response: "):
     """
@@ -98,29 +134,24 @@ def generate_stream(llm, prompt, prefix="### User: ", suffix="### Response: "):
     for pattern in stop_patterns:
         if pattern in full_response:
             full_response = full_response[:full_response.rfind(pattern)]
-from flask_cors import CORS
 
-# Create Flask app
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-
-# Global model instance
-model = None
-
-def init_model(model_path="./luna.gguf", threads=4, context_size=4096, system_prompt="### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation"):
-    """Initialize the model if not already initialized"""
-    global model
-    if model is None:
-        print("Initializing model...")
-        model = initialize_model(
-            model_path=model_path,
-            threads=threads,
-            context_size=context_size,
-            system_prompt=system_prompt
-        )
-        print("Model initialized successfully")
-    return model
+def get_model_config(request_data):
+    """Extract model configuration from request or use defaults"""
+    config = DEFAULT_CONFIG.copy()
+    
+    # Update config with request data if provided
+    if 'model_path' in request_data:
+        config['model_path'] = request_data['model_path']
+    if 'model' in request_data:
+        config['model_name'] = request_data['model']
+    if 'threads' in request_data:
+        config['threads'] = request_data['threads']
+    if 'context_size' in request_data:
+        config['context_size'] = request_data['context_size']
+    if 'system_prompt' in request_data:
+        config['system_prompt'] = request_data['system_prompt']
+        
+    return config
 
 @app.route('/v1/models', methods=['GET'])
 def list_models():
@@ -128,7 +159,7 @@ def list_models():
     return jsonify({
         "data": [
             {
-                "id": "luna",
+                "id": DEFAULT_CONFIG["model_name"],
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "local"
@@ -146,16 +177,12 @@ def chat_completions():
     messages = data.get('messages', [])
     stream = data.get('stream', False)
     max_tokens = data.get('max_tokens', 256)
-    model_name = data.get('model', 'luna')
     
-    # Extract model config if provided
-    model_path = data.get('model_path', './luna.gguf')
-    threads = data.get('threads', 4)
-    context_size = data.get('context_size', 4096)
-    system_prompt = data.get('system_prompt', "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation")
+    # Get model configuration
+    config = get_model_config(data)
     
     # Initialize model
-    llm = init_model(model_path, threads, context_size, system_prompt)
+    llm = init_model(config)
     
     # Format user prompt from messages
     user_prompt = ""
@@ -176,20 +203,20 @@ def chat_completions():
             full_response = ""
             
             # Stream header
-            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
             
             # Stream content
             for token in generate_stream(llm, user_prompt):
                 response_tokens += 1
                 full_response += token
                 
-                yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
                 
                 if response_tokens >= max_tokens:
                     break
             
             # Stream completion
-            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
             
             # End stream
             yield "data: [DONE]\n\n"
@@ -210,7 +237,7 @@ def chat_completions():
             "id": f"chatcmpl-{int(time.time())}",
             "object": "chat.completion",
             "created": int(time.time()),
-            "model": model_name,
+            "model": config['model_name'],
             "choices": [
                 {
                     "index": 0,
@@ -238,16 +265,12 @@ def chat_completions_stream():
     # Extract parameters from request
     messages = data.get('messages', [])
     max_tokens = data.get('max_tokens', 256)
-    model_name = data.get('model', 'luna')
     
-    # Extract model config if provided
-    model_path = data.get('model_path', './luna-hermes.gguf')
-    threads = data.get('threads', 4)
-    context_size = data.get('context_size', 4096)
-    system_prompt = data.get('system_prompt', "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation")
+    # Get model configuration
+    config = get_model_config(data)
     
     # Initialize model
-    llm = init_model(model_path, threads, context_size, system_prompt)
+    llm = init_model(config)
     
     # Format user prompt from messages
     user_prompt = ""
@@ -266,20 +289,20 @@ def chat_completions_stream():
         full_response = ""
         
         # Stream header
-        yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+        yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
         
         # Stream content
         for token in generate_stream(llm, user_prompt):
             response_tokens += 1
             full_response += token
             
-            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
             
             if response_tokens >= max_tokens:
                 break
         
         # Stream completion
-        yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+        yield f"data: {json.dumps({'id': f'chatcmpl-{int(time.time())}', 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
         
         # End stream
         yield "data: [DONE]\n\n"
@@ -295,16 +318,12 @@ def completions():
     prompt = data.get('prompt', '')
     stream = data.get('stream', False)
     max_tokens = data.get('max_tokens', 256)
-    model_name = data.get('model', 'luna')
     
-    # Extract model config if provided
-    model_path = data.get('model_path', './luna-hermes.gguf')
-    threads = data.get('threads', 4)
-    context_size = data.get('context_size', 4096)
-    system_prompt = data.get('system_prompt', "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation")
+    # Get model configuration
+    config = get_model_config(data)
     
     # Initialize model
-    llm = init_model(model_path, threads, context_size, system_prompt)
+    llm = init_model(config)
     
     # Format and tokenize the prompt to get input token count
     prefix = "### User: "
@@ -319,20 +338,20 @@ def completions():
             full_response = ""
             
             # Stream header
-            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
             
             # Stream content
             for token in generate_stream(llm, prompt):
                 response_tokens += 1
                 full_response += token
                 
-                yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
                 
                 if response_tokens >= max_tokens:
                     break
             
             # Stream completion
-            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
             
             # End stream
             yield "data: [DONE]\n\n"
@@ -353,7 +372,7 @@ def completions():
             "id": f"cmpl-{int(time.time())}",
             "object": "text_completion",
             "created": int(time.time()),
-            "model": model_name,
+            "model": config['model_name'],
             "choices": [
                 {
                     "text": response_text,
@@ -378,16 +397,12 @@ def completions_stream():
     # Extract parameters from request
     prompt = data.get('prompt', '')
     max_tokens = data.get('max_tokens', 256)
-    model_name = data.get('model', 'luna')
     
-    # Extract model config if provided
-    model_path = data.get('model_path', './luna-hermes.gguf')
-    threads = data.get('threads', 4)
-    context_size = data.get('context_size', 4096)
-    system_prompt = data.get('system_prompt', "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation")
+    # Get model configuration
+    config = get_model_config(data)
     
     # Initialize model
-    llm = init_model(model_path, threads, context_size, system_prompt)
+    llm = init_model(config)
     
     # Format and tokenize the prompt to get input token count
     prefix = "### User: "
@@ -400,20 +415,20 @@ def completions_stream():
         full_response = ""
         
         # Stream header
-        yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
+        yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
         
         # Stream content
         for token in generate_stream(llm, prompt):
             response_tokens += 1
             full_response += token
             
-            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
             
             if response_tokens >= max_tokens:
                 break
         
         # Stream completion
-        yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
+        yield f"data: {json.dumps({'id': f'cmpl-{int(time.time())}', 'object': 'text_completion.chunk', 'created': int(time.time()), 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
         
         # End stream
         yield "data: [DONE]\n\n"
@@ -428,11 +443,13 @@ def generic_stream():
     # Determine if we're using chat or completion mode
     is_chat = 'messages' in data
     
+    # Get model configuration
+    config = get_model_config(data)
+    
     if is_chat:
         # Extract chat parameters
         messages = data.get('messages', [])
         max_tokens = data.get('max_tokens', 256)
-        model_name = data.get('model', 'luna')
         
         # Extract user message
         user_prompt = ""
@@ -443,16 +460,9 @@ def generic_stream():
         # Extract completion parameters
         user_prompt = data.get('prompt', '')
         max_tokens = data.get('max_tokens', 256)
-        model_name = data.get('model', 'luna')
-    
-    # Extract model config if provided
-    model_path = data.get('model_path', './luna-hermes.gguf')
-    threads = data.get('threads', 4)
-    context_size = data.get('context_size', 4096)
-    system_prompt = data.get('system_prompt', "### System: You are Luna, a sexy lady trying to help out. Talk shortly as a conversation")
     
     # Initialize model
-    llm = init_model(model_path, threads, context_size, system_prompt)
+    llm = init_model(config)
     
     # Format and tokenize the prompt to get input token count
     prefix = "### User: "
@@ -469,9 +479,9 @@ def generic_stream():
         
         # Stream header based on type
         if is_chat:
-            yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
         else:
-            yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': None}]})}\n\n"
         
         # Stream content
         for token in generate_stream(llm, user_prompt):
@@ -479,23 +489,54 @@ def generic_stream():
             full_response += token
             
             if is_chat:
-                yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {'content': token}, 'finish_reason': None}]})}\n\n"
             else:
-                yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'text': token, 'finish_reason': None}]})}\n\n"
             
             if response_tokens >= max_tokens:
                 break
         
         # Stream completion
         if is_chat:
-            yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'chatcmpl-{response_id}', 'object': 'chat.completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
         else:
-            yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': model_name, 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
+            yield f"data: {json.dumps({'id': f'cmpl-{response_id}', 'object': 'text_completion.chunk', 'created': response_id, 'model': config['model_name'], 'choices': [{'index': 0, 'text': '', 'finish_reason': 'stop'}]})}\n\n"
         
         # End stream
         yield "data: [DONE]\n\n"
         
     return Response(stream_with_context(generate()), content_type='text/event-stream')
+
+# Route to update the default model configuration
+@app.route('/v1/set-model-config', methods=['POST'])
+def set_model_config():
+    """Update the default model configuration"""
+    global DEFAULT_CONFIG, model
+    
+    data = request.json
+    
+    # Update configuration with provided values
+    if 'model_path' in data:
+        DEFAULT_CONFIG['model_path'] = data['model_path']
+    if 'model_name' in data:
+        DEFAULT_CONFIG['model_name'] = data['model_name']
+    if 'threads' in data:
+        DEFAULT_CONFIG['threads'] = data['threads']
+    if 'context_size' in data:
+        DEFAULT_CONFIG['context_size'] = data['context_size']
+    if 'system_prompt' in data:
+        DEFAULT_CONFIG['system_prompt'] = data['system_prompt']
+    
+    # If model should be reinitialized
+    if data.get('reinitialize', False):
+        model = None
+        model = init_model()
+    
+    return jsonify({
+        "status": "success",
+        "message": "Model configuration updated",
+        "config": DEFAULT_CONFIG
+    })
 
 if __name__ == "__main__":
     # Run the Flask app
