@@ -10,7 +10,7 @@ CORS(app)  # Enable CORS for all routes
 
 # Default model configuration
 DEFAULT_CONFIG = {
-    "model_path": "./luna.gguf",
+    "model_path": "/media/orangepi/BIG BOOBIE/phi4-mini.gguf",
     "model_name": "luna",
     "threads": 4,
     "context_size": 4096,
