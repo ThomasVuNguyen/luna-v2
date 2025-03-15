@@ -10,7 +10,7 @@ CORS(app)  # Enable CORS for all routes
 
 # Default model configuration
 DEFAULT_CONFIG = {
-    "model_path": "./luna-falcon.gguf",
+    "model_path": "./luna-mamba.gguf",
     "model_name": "luna",
     "threads": 4,
     "context_size": 4096,

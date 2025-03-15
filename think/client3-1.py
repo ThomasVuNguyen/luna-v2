@@ -124,7 +124,7 @@ if __name__ == "__main__":
     time.sleep(2)
     
     # Test regular chat completion
-    test_chat_completion()
+    # test_chat_completion()
     
     # Test streaming chat completion
     print("\n")
